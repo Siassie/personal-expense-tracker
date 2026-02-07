@@ -1,32 +1,25 @@
-from fastapi import Depends, Header, HTTPException, status
-from sqlalchemy.orm import Session
-from typing import Annotated, Union
-from app.core.security.authHandler import AuthHandler
-from app.service.userService import UserService
+# app/util/protectRoute.py
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer
+import jwt
+from app.db.models.user import User
 from app.core.database import get_db
-from app.db.schema.user import UserOutput
-from app.db.repository.userRepo import UserRepository
+from sqlalchemy.orm import Session
+from decouple import config
 
-AUTH_PREFIX = "Bearer "
+JWT_SECRET = config("JWT_SECRET")
+JWT_ALGORITHM = config("JWT_ALGORITHM")
 
-def get_current_user(session : Session = Depends(get_db), authorization : Annotated[Union[str, None], Header()] = None) -> UserOutput:
-    auth_exception = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Authentication Credentials.")
+security = HTTPBearer()
 
-    if not authorization:
-        raise auth_exception
-    
-    if not authorization.startswith(AUTH_PREFIX):
-        raise auth_exception
-    
-    payload = AuthHandler.decode_jwt(token=authorization[len(AUTH_PREFIX):])
-
-    if payload and payload["user_id"]:
-        try:
-            user = UserService(session=session).get_user_by_id(payload["user_id"])
-
-            return UserOutput(id=user.id, first_name=user.first_name, last_name=user.last_name, email=user.email)
-        
-        except Exception as error:
-            raise error
-    
-    raise auth_exception
+def get_current_user_id(token: str = Depends(security), db: Session = Depends(get_db)) -> int:
+    try:
+        payload = jwt.decode(token.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id: int = payload.get("user_id")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return user_id
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")

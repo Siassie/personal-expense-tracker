@@ -9,7 +9,7 @@ class UserRepository(BaseRepository):
 
         self.session.add(instance=new_user)
         self.session.commit()
-        self.session.refresh(instance=new_user)
+        self.session.refresh(new_user)
 
         return new_user
     
